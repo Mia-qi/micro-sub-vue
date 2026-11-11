@@ -1,6 +1,26 @@
 <template>
-  <div style="padding: 20px; border: 2px dashed #42b883; margin-top: 20px">
-    <h2>我是 Vue 子应用</h2>
-    <p>如果你能在主应用里看到这个绿框，说明微前端跑通了！</p>
+  <div class="screen-app">
+    <router-view />
   </div>
 </template>
+
+<style>
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #030a1a;
+}
+
+#app {
+  height: 100%;
+}
+</style>
+
+<style scoped>
+.screen-app {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+</style>

@@ -1,34 +1,100 @@
 import { createApp } from 'vue'
+import { appRoot } from 'virtual:qk-app-root'
+import './assets/screen.css'
 import App from './App.vue'
+import router from './router'
+import { setScreenToken } from './api/request'
+import { destroyScreenRuntime } from './utils/screenRuntime'
+
+const APP_NAME = 'big-screen'
 
 let app = null
+let releaseStyleBridge = null
 
-// 渲染函数：如果主应用传了 container，就挂载到 container 内；否则挂载到自己的 #app
+function resolveMountTarget(container) {
+  const target = typeof container === 'string' ? document.querySelector(container) : container
+  const appNode = target && typeof target.querySelector === 'function' ? target.querySelector('#app') : null
+  if (appNode) return appNode
+  if (target && target.nodeType === 11) {
+    const fallback = document.createElement('div')
+    fallback.id = 'app'
+    target.appendChild(fallback)
+    return fallback
+  }
+  return '#app'
+}
+
+function bridgeShadowStyles(shadowRoot) {
+  if (!import.meta.env.DEV || !shadowRoot || shadowRoot.nodeType !== 11) {
+    return null
+  }
+
+  const mirrored = new Map()
+
+  const isOwnStyle = (id) => typeof id === 'string' && id.indexOf(appRoot) === 0
+
+  const sync = () => {
+    document.querySelectorAll('style[data-vite-dev-id]').forEach((source) => {
+      const id = source.getAttribute('data-vite-dev-id')
+      if (!isOwnStyle(id)) return
+
+      let target = mirrored.get(id)
+      if (!target) {
+        target = document.createElement('style')
+        target.setAttribute('data-vite-dev-id', id)
+        mirrored.set(id, target)
+        shadowRoot.appendChild(target)
+      }
+      if (target.textContent !== source.textContent) {
+        target.textContent = source.textContent
+      }
+    })
+  }
+
+  sync()
+
+  const observer = new MutationObserver(sync)
+  observer.observe(document.head, { childList: true, subtree: true, characterData: true })
+
+  return () => observer.disconnect()
+}
+
 function render(props = {}) {
-  const { container } = props
+  const { container, token } = props
+
+  setScreenToken(token || null)
+
+  releaseStyleBridge = bridgeShadowStyles(container)
+
   app = createApp(App)
-  app.mount(container ? container.querySelector('#app') : '#app')
+  app.use(router)
+  app.mount(resolveMountTarget(container))
 }
 
-// 独立运行时的判断（如果直接访问 5174 端口）
-if (!window.__POWERED_BY_QIANKUN__) {
-  render()
-}
-
-// === 必须导出的 qiankun 生命周期 ===
 export async function bootstrap() {
-  console.log('子应用 bootstrap')
+  console.log('[big-screen] bootstrap')
 }
 
 export async function mount(props) {
-  console.log('子应用 mount，收到主应用数据:', props)
+  console.log('[big-screen] mount', props)
   render(props)
 }
 
 export async function unmount() {
-  console.log('子应用 unmount')
+  console.log('[big-screen] unmount')
+  if (releaseStyleBridge) {
+    releaseStyleBridge()
+    releaseStyleBridge = null
+  }
+  destroyScreenRuntime()
   if (app) {
     app.unmount()
     app = null
   }
+}
+
+if (window.__POWERED_BY_QIANKUN__) {
+  window[APP_NAME] = { bootstrap, mount, unmount }
+} else {
+  render()
 }
